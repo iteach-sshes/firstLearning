@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>貓追老鼠 - Canvas 遊戲</title>
+  <style>
+    html,body{height:100%;margin:0;background:#f0f4f8;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans TC","Microsoft JhengHei",sans-serif}
+    #gameWrap{display:flex;align-items:center;justify-content:center;height:100%;}
+    canvas{background:#fff;border:4px solid #334155;border-radius:8px;box-shadow:0 6px 20px rgba(16,24,40,0.12)}
+    .hud{position:fixed;top:16px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center}
+    .panel{background:rgba(255,255,255,0.9);padding:8px 12px;border-radius:8px;border:1px solid #e6eef6;font-weight:600;color:#0f172a}
+    #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    #message{pointer-events:auto;background:rgba(15,23,42,0.95);color:#fff;padding:20px 28px;border-radius:12px;text-align:center;box-shadow:0 8px 30px rgba(2,6,23,0.35)}
+    button{margin-top:12px;padding:8px 14px;border-radius:8px;border:0;background:#10b981;color:#fff;font-weight:700;cursor:pointer}
+    button:active{transform:translateY(1px)}
+  </style>
+</head>
+<body>
+  <div id="gameWrap">
+    <canvas id="game" width="640" height="480"></canvas>
+  </div>
+
+  <div class="hud">
+    <div class="panel">Time: <span id="time">20</span>s</div>
+    <div class="panel">Score: <span id="score">0</span></div>
+  </div>
+
+  <div id="overlay" aria-hidden="true" style="display:none">
+    <div id="message">
+      <div id="msgText">時間到！</div>
+      <div style="margin-top:8px;font-size:18px">你的分數：<span id="finalScore">0</span></div>
+      <button id="restart">重新開始</button>
+    </div>
+  </div>
+
+  <script>
+    // 貓追老鼠 - Canvas 遊戲
+    (function(){
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width; const H = canvas.height;
+
+      const timeEl = document.getElementById('time');
+      const scoreEl = document.getElementById('score');
+      const overlay = document.getElementById('overlay');
+      const finalScoreEl = document.getElementById('finalScore');
+      const restartBtn = document.getElementById('restart');
+
+      // Game state
+      let score = 0;
+      let timeLeft = 20; // seconds
+      let running = true;
+
+      // Player-controlled cat
+      const cat = { x: W/2, y: H/2, radius: 20, color: '#ef4444', angle: 0 };
+      // Mouse (target)
+      const mouse = { x: 80, y: 80, radius: 12, color: '#f59e0b' };
+
+      // Mouse cursor target position (where player moved the mouse)
+      const target = { x: cat.x, y: cat.y };
+
+      // Movement parameters
+      const catSpeed = 220; // pixels per second
+
+      // Timer update
+      let lastTime = performance.now();
+      let accumulator = 0;
+
+      // Input
+      window.addEventListener('mousemove', function(e){
+        const rect = canvas.getBoundingClientRect();
+        target.x = Math.max(0, Math.min(W, e.clientX - rect.left));
+        target.y = Math.max(0, Math.min(H, e.clientY - rect.top));
+      });
+
+      // Optional: allow clicking to teleport target (not required)
+      canvas.addEventListener('click', function(e){
+        const rect = canvas.getBoundingClientRect();
+        target.x = Math.max(0, Math.min(W, e.clientX - rect.left));
+        target.y = Math.max(0, Math.min(H, e.clientY - rect.top));
+      });
+
+      function spawnMouse(){
+        // Spawn mouse in a random position not too close to cat
+        let x, y, attempts = 0;
+        do{
+          x = Math.random()*(W-40) + 20;
+          y = Math.random()*(H-40) + 20;
+          attempts++;
+        }while(distance(x,y,cat.x,cat.y) < cat.radius + mouse.radius + 40 && attempts < 50);
+        mouse.x = x; mouse.y = y;
+      }
+
+      function distance(x1,y1,x2,y2){
+        const dx = x1-x2, dy = y1-y2; return Math.sqrt(dx*dx + dy*dy);
+      }
+
+      function update(dt){
+        if(!running) return;
+        // Move cat towards target with a max speed
+        const dx = target.x - cat.x; const dy = target.y - cat.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist > 1){
+          const move = Math.min(dist, catSpeed * dt);
+          cat.x += (dx/dist) * move;
+          cat.y += (dy/dist) * move;
+          cat.angle = Math.atan2(dy, dx);
+        }
+
+        // Check collision with mouse
+        if(distance(cat.x,cat.y,mouse.x,mouse.y) <= cat.radius + mouse.radius){
+          score += 1;
+          scoreEl.textContent = score;
+          // Spawn new mouse
+          spawnMouse();
+        }
+
+        // Countdown
+        accumulator += dt;
+        if(accumulator >= 1){
+          accumulator -= 1;
+          timeLeft = Math.max(0, timeLeft - 1);
+          timeEl.textContent = timeLeft;
+          if(timeLeft <= 0){
+            endGame();
+          }
+        }
+      }
+
+      function draw(){
+        // Clear
+        ctx.clearRect(0,0,W,H);
+
+        // Draw mouse (little circle with tail)
+        // tail
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(mouse.x - 8, mouse.y + 6);
+        ctx.quadraticCurveTo(mouse.x - 18, mouse.y + 10, mouse.x - 26, mouse.y + 18);
+        ctx.strokeStyle = '#d97706'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.restore();
+
+        // body
+        ctx.beginPath();
+        ctx.fillStyle = mouse.color;
+        ctx.arc(mouse.x, mouse.y, mouse.radius, 0, Math.PI*2);
+        ctx.fill();
+        // eye
+        ctx.beginPath(); ctx.fillStyle = '#111827'; ctx.arc(mouse.x+4, mouse.y-3, 2.2, 0, Math.PI*2); ctx.fill();
+
+        // Draw cat (bigger circle with ears)
+        ctx.save();
+        ctx.translate(cat.x, cat.y);
+        ctx.rotate(cat.angle);
+
+        // body
+        ctx.beginPath(); ctx.fillStyle = cat.color; ctx.arc(0,0,cat.radius,0,Math.PI*2); ctx.fill();
+        // left ear
+        ctx.beginPath(); ctx.moveTo(-10,-12); ctx.lineTo(-4,-26); ctx.lineTo(-0,-12); ctx.closePath(); ctx.fillStyle='#ef4444'; ctx.fill();
+        // right ear
+        ctx.beginPath(); ctx.moveTo(10,-12); ctx.lineTo(4,-26); ctx.lineTo(0,-12); ctx.closePath(); ctx.fill();
+        // eye
+        ctx.beginPath(); ctx.fillStyle = '#111827'; ctx.arc(8,-4,3,0,Math.PI*2); ctx.fill();
+        // nose
+        ctx.beginPath(); ctx.fillStyle = '#fff'; ctx.arc(10,2,2.5,0,Math.PI*2); ctx.fill();
+
+        ctx.restore();
+
+        // Optional: draw target cursor for clarity
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(2,6,23,0.08)'; ctx.lineWidth = 1; ctx.arc(target.x, target.y, 6, 0, Math.PI*2); ctx.stroke();
+      }
+
+      function loop(now){
+        const dt = Math.min(0.05, (now - lastTime)/1000);
+        lastTime = now;
+        update(dt);
+        draw();
+        if(running) requestAnimationFrame(loop);
+      }
+
+      function endGame(){
+        running = false;
+        overlay.style.display = 'flex';
+        overlay.setAttribute('aria-hidden','false');
+        finalScoreEl.textContent = score;
+      }
+
+      restartBtn.addEventListener('click', function(){
+        // Reset
+        score = 0; timeLeft = 20; running = true; accumulator = 0; scoreEl.textContent = '0'; timeEl.textContent = String(timeLeft);
+        overlay.style.display = 'none'; overlay.setAttribute('aria-hidden','true');
+        cat.x = W/2; cat.y = H/2; target.x = cat.x; target.y = cat.y; spawnMouse(); lastTime = performance.now(); requestAnimationFrame(loop);
+      });
+
+      // Start
+      spawnMouse(); timeEl.textContent = String(timeLeft); scoreEl.textContent = '0'; lastTime = performance.now(); requestAnimationFrame(loop);
+
+      // Make canvas resize to container if window resized (keep aspect ratio)
+      window.addEventListener('resize', () => {
+        // No dynamic resizing required; keep fixed canvas for consistent gameplay
+      });
+
+    })();
+  </script>
+</body>
+</html>
