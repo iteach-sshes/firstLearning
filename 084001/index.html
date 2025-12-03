@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>紅球點擊遊戲</title>
+  <style>
+    html,body {
+      height:100%;
+      margin:0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial;
+      background: #f7f7f7;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* 頂部狀態列 */
+    .hud {
+      width:100%;
+      box-sizing:border-box;
+      padding:12px 16px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      background: linear-gradient(180deg,#ffffffcc,#f0f0f0);
+      position:fixed;
+      top:0;
+      left:0;
+      z-index:100;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .score {
+      font-size:20px;
+      font-weight:600;
+      color:#222;
+    }
+    .controls button {
+      font-size:14px;
+      padding:8px 12px;
+      border-radius:6px;
+      border:1px solid #ccc;
+      background:#fff;
+      cursor:pointer;
+    }
+    .controls button:active { transform:translateY(1px); }
+
+    /* 遊戲畫面容器（放在 hud 下方） */
+    .game-area {
+      position:relative;
+      width:100%;
+      height:calc(100% - 60px); /* leave space for hud (approx) */
+      padding-top:60px; /* avoid hud overlap for small screens */
+      box-sizing:border-box;
+    }
+
+    /* 紅色圓形目標 */
+    #target {
+      position:absolute;
+      width:100px;
+      height:100px;
+      border-radius:50%;
+      background:#e53935; /* 紅色 */
+      box-shadow: 0 6px 18px rgba(229,57,53,0.28);
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color: #fff;
+      font-weight:700;
+      user-select:none;
+      transition: left 0.18s ease, top 0.18s ease; /* 平滑移動 */
+      touch-action: manipulation;
+    }
+
+    /* 讓小螢幕時目標縮小 */
+    @media (max-width:420px) {
+      #target { width:70px; height:70px; font-size:14px; }
+    }
+
+    /* 中心輔助（不必要，可移除） */
+    .center-guide {
+      position: absolute;
+      inset:0;
+      pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud" role="region" aria-label="遊戲狀態列">
+    <div class="score">分數：<span id="score">0</span></div>
+    <div class="controls">
+      <button id="resetBtn" type="button" aria-label="重置遊戲">遊戲重置</button>
+    </div>
+  </div>
+
+  <div class="game-area" id="gameArea">
+    <div id="target" role="button" aria-label="目標">點我</div>
+  </div>
+
+  <script>
+    (function(){
+      const scoreEl = document.getElementById('score');
+      const target = document.getElementById('target');
+      const resetBtn = document.getElementById('resetBtn');
+      const gameArea = document.getElementById('gameArea');
+
+      let score = 0;
+
+      // 取得目標尺寸（會依 CSS 跟 media query 改變）
+      function getTargetSize() {
+        return {
+          w: target.offsetWidth,
+          h: target.offsetHeight
+        };
+      }
+
+      // 隨機移動目標，確保完全在 gameArea 範圍內，並不會蓋到 hud（gameArea 已留空間）
+      function moveToRandomPosition() {
+        const rect = gameArea.getBoundingClientRect();
+        const size = getTargetSize();
+
+        const minX = 0;
+        const minY = 0;
+
+        const maxX = Math.max(0, rect.width - size.w);
+        const maxY = Math.max(0, rect.height - size.h);
+
+        // 隨機位置
+        const x = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+        const y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+
+        // 因為 target 使用 position:absolute 相對於 gameArea，所以直接設定 left/top
+        target.style.left = x + 'px';
+        target.style.top = y + 'px';
+      }
+
+      // 初始置中
+      function centerTarget() {
+        const rect = gameArea.getBoundingClientRect();
+        const size = getTargetSize();
+        const x = Math.max(0, Math.floor((rect.width - size.w) / 2));
+        const y = Math.max(0, Math.floor((rect.height - size.h) / 2));
+        target.style.left = x + 'px';
+        target.style.top = y + 'px';
+      }
+
+      // 更新分數視覺
+      function updateScoreDisplay() {
+        scoreEl.textContent = score;
+      }
+
+      // 點擊處理：加分並移動
+      function handleHit() {
+        score += 1;
+        updateScoreDisplay();
+        moveToRandomPosition();
+      }
+
+      // 重置
+      function resetGame() {
+        score = 0;
+        updateScoreDisplay();
+        centerTarget();
+      }
+
+      // 綁定事件（支援滑鼠與觸控）
+      target.addEventListener('click', function(e){
+        e.stopPropagation();
+        handleHit();
+      });
+
+      // 也支援 touchend，讓手機體驗更即時
+      target.addEventListener('touchend', function(e){
+        // 防止同時觸發 click，使用短延遲或 preventDefault
+        e.preventDefault();
+        handleHit();
+      }, {passive:false});
+
+      // 點擊畫面空白處不做事（避免誤觸）
+      gameArea.addEventListener('click', function(){ /* no-op */ });
+
+      resetBtn.addEventListener('click', function(){
+        resetGame();
+      });
+
+      // 畫面大小改變時，確保目標仍在可視範圍內
+      window.addEventListener('resize', function(){
+        // 如果目標超出範圍，重新置中
+        const rect = gameArea.getBoundingClientRect();
+        const size = getTargetSize();
+        const left = parseFloat(getComputedStyle(target).left) || 0;
+        const top = parseFloat(getComputedStyle(target).top) || 0;
+        const maxX = Math.max(0, rect.width - size.w);
+        const maxY = Math.max(0, rect.height - size.h);
+        let changed = false;
+        let newLeft = left, newTop = top;
+        if (left > maxX) { newLeft = maxX; changed = true; }
+        if (top > maxY) { newTop = maxY; changed = true; }
+        if (changed) {
+          target.style.left = newLeft + 'px';
+          target.style.top = newTop + 'px';
+        }
+      });
+
+      // 啟動時置中
+      resetGame();
+    })();
+  </script>
+</body>
+</html>
